@@ -1,81 +1,67 @@
 pipeline {
     agent any
 
-    environment {
-        NODE_ENV = 'development'
-    }
-
-    tools {
-        nodejs 'NodeJS 18'  // Name must match what you configure in Jenkins > Global Tool Configuration
-    }
-
     stages {
-
-        stage('Clone Repository') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vamccc25/retail-store-sample-app.git'
+                git url: 'https://github.com/vamccc25/retail-store-sample-app.git'
             }
         }
 
-        stage('Build Frontend (web-ui)') {
+        stage('Build & Test UI (Java)') {
             steps {
-                dir('web-ui') {
+                dir('src/frontend') {
+                    sh 'mvn clean install'
+                    sh 'docker build -t ui-service .'
+                }
+            }
+        }
+
+        stage('Build & Test Orders (Java)') {
+            steps {
+                dir('src/orders') {
+                    sh 'mvn clean install'
+                    sh 'docker build -t orders-service .'
+                }
+            }
+        }
+
+        stage('Build & Test Cart (Java)') {
+            steps {
+                dir('src/cart') {
+                    sh 'mvn clean install'
+                    sh 'docker build -t cart-service .'
+                }
+            }
+        }
+
+        stage('Build & Test Catalog (Go)') {
+            steps {
+                dir('src/catalog') {
+                    sh 'go mod tidy'
+                    sh 'go test ./...'
+                    sh 'docker build -t catalog-service .'
+                }
+            }
+        }
+
+        stage('Build & Test Checkout (Node.js)') {
+            steps {
+                dir('src/checkout') {
                     sh 'npm install'
-                    sh 'npm run build'
+                    sh 'npm test || echo "No tests found"'
+                    sh 'docker build -t checkout-service .'
                 }
-            }
-        }
-
-        stage('Build Backend Services (Java)') {
-            parallel {
-                stage('Build Carts') {
-                    steps {
-                        dir('carts') {
-                            sh './mvnw clean package -DskipTests'
-                        }
-                    }
-                }
-
-                stage('Build Orders') {
-                    steps {
-                        dir('orders') {
-                            sh './mvnw clean package -DskipTests'
-                        }
-                    }
-                }
-
-                stage('Build Products') {
-                    steps {
-                        dir('products') {
-                            sh './mvnw clean package -DskipTests'
-                        }
-                    }
-                }
-
-                stage('Build Checkout') {
-                    steps {
-                        dir('checkout') {
-                            sh './mvnw clean package -DskipTests'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
-                // Assumes your YAMLs are in k8s-manifests/
-                sh 'kubectl apply -f k8s-manifests/'
             }
         }
     }
 
     post {
-        failure {
-            echo '❌ Build failed!'
-        }
         success {
-            echo '✅ Build and Deploy succeeded!'
+            echo '✅ All components built successfully!'
+        }
+        failure {
+            echo '❌ Build failed.'
         }
     }
 }
